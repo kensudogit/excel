@@ -31,8 +31,10 @@ CORS(app)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
 
 # 設定
-UPLOAD_FOLDER = Path('uploads')
-RESULTS_FOLDER = Path('results')
+# アプリケーションのベースディレクトリを取得（app.pyがあるディレクトリ）
+BASE_DIR = Path(__file__).parent.resolve()
+UPLOAD_FOLDER = BASE_DIR / 'uploads'
+RESULTS_FOLDER = BASE_DIR / 'results'
 UPLOAD_FOLDER.mkdir(exist_ok=True)
 RESULTS_FOLDER.mkdir(exist_ok=True)
 
@@ -201,7 +203,17 @@ def search_excel_files():
             # ブック作成に失敗しても検索結果は返す
         
         # 結果をJSON形式で返す
-        output_file_str = str(output_file) if 'output_file' in locals() else None
+        # 相対パスとして返す（RESULTS_FOLDERからの相対パス）
+        if 'output_file' in locals() and output_file:
+            # RESULTS_FOLDERからの相対パスを取得
+            try:
+                output_file_str = str(output_file.relative_to(RESULTS_FOLDER))
+            except ValueError:
+                # 相対パスにできない場合は、ファイル名のみを返す
+                output_file_str = output_file.name
+        else:
+            output_file_str = None
+        
         return jsonify({
             'success': True,
             'results': all_results,
@@ -215,10 +227,12 @@ def search_excel_files():
         error_trace = traceback.format_exc()
         print(f"Error in search_excel_files: {error_trace}")
         app.logger.error(f"Error in search_excel_files: {error_trace}")
-        return jsonify({
+        response = jsonify({
             'success': False,
             'error': f'検索中にエラーが発生しました: {str(e)}'
-        }), 500
+        })
+        response.headers['Content-Type'] = 'application/json'
+        return response, 500
 
 
 @app.route('/api/search-files', methods=['POST'])
@@ -307,7 +321,17 @@ def search_excel_files_upload():
                 print(f"Error deleting temp file {temp_file}: {str(e)}")
         
         # 結果をJSON形式で返す
-        output_file_str = str(output_file) if 'output_file' in locals() else None
+        # 相対パスとして返す（RESULTS_FOLDERからの相対パス）
+        if 'output_file' in locals() and output_file:
+            # RESULTS_FOLDERからの相対パスを取得
+            try:
+                output_file_str = str(output_file.relative_to(RESULTS_FOLDER))
+            except ValueError:
+                # 相対パスにできない場合は、ファイル名のみを返す
+                output_file_str = output_file.name
+        else:
+            output_file_str = None
+        
         app.logger.info(f"Search completed: {len(all_results)} matches found in {len(excel_files)} files")
         return jsonify({
             'success': True,
@@ -322,11 +346,13 @@ def search_excel_files_upload():
         error_trace = traceback.format_exc()
         print(f"Error in search_excel_files_upload: {error_trace}")
         app.logger.error(f"Error in search_excel_files_upload: {error_trace}")
-        return jsonify({
+        response = jsonify({
             'success': False,
             'error': f'検索中にエラーが発生しました: {str(e)}',
             'traceback': error_trace if app.debug else None
-        }), 500
+        })
+        response.headers['Content-Type'] = 'application/json'
+        return response, 500
 
 
 @app.route('/api/get-cell-details', methods=['POST'])
@@ -408,22 +434,91 @@ def download_results():
     検索結果のExcelファイルをダウンロード
     """
     try:
+        from urllib.parse import unquote
+        
         file_path = request.args.get('file_path', '')
         if not file_path:
             return jsonify({'success': False, 'error': 'ファイルパスが指定されていません'}), 400
         
-        file_path_obj = Path(file_path)
+        # URLデコード
+        file_path = unquote(file_path)
+        
+        app.logger.info(f"Download request - Original file_path: {file_path}")
+        
+        # パスの正規化
+        # バックスラッシュをスラッシュに変換
+        file_path_normalized = file_path.replace('\\', '/')
+        
+        # RESULTS_FOLDERを絶対パスに変換
+        results_folder_abs = RESULTS_FOLDER.resolve()
+        
+        # 相対パスの場合は、resultsフォルダからのパスとして処理
+        if not os.path.isabs(file_path_normalized):
+            # 'results/' または 'results\' プレフィックスを削除（既に含まれている場合）
+            # 大文字小文字を区別せずに削除
+            file_path_lower = file_path_normalized.lower()
+            if file_path_lower.startswith('results/'):
+                file_path_normalized = file_path_normalized[len('results/'):]
+            elif file_path_lower.startswith('results\\'):
+                file_path_normalized = file_path_normalized[len('results\\'):]
+            
+            # 先頭のスラッシュやバックスラッシュを削除
+            file_path_normalized = file_path_normalized.lstrip('/\\')
+            
+            # 空の場合はエラー
+            if not file_path_normalized:
+                return jsonify({'success': False, 'error': 'ファイルパスが無効です'}), 400
+            
+            # RESULTS_FOLDER（絶対パス）からの相対パスとして処理
+            file_path_obj = results_folder_abs / file_path_normalized
+        else:
+            file_path_obj = Path(file_path_normalized).resolve()
+        
+        # ファイルパスを絶対パスに変換（確実に）
+        file_path_obj = file_path_obj.resolve()
+        
+        app.logger.info(f"Download request - Normalized path: {file_path_normalized}")
+        app.logger.info(f"Download request - Full path (abs): {file_path_obj}")
+        app.logger.info(f"Download request - RESULTS_FOLDER (abs): {results_folder_abs}")
+        app.logger.info(f"Download request - File exists: {file_path_obj.exists()}")
+        
+        # ファイルが存在するか確認
         if not file_path_obj.exists():
-            return jsonify({'success': False, 'error': 'ファイルが見つかりません'}), 404
+            # RESULTS_FOLDER内の全ファイルをリストアップ（デバッグ用）
+            available_files = []
+            if results_folder_abs.exists():
+                available_files = list(results_folder_abs.glob('*.xlsx'))
+                app.logger.error(f"Available files in RESULTS_FOLDER: {[f.name for f in available_files]}")
+                app.logger.error(f"Looking for: {file_path_normalized}")
+                app.logger.error(f"Full path attempted: {file_path_obj}")
+            
+            # ファイル名が一致するファイルを探す（フォールバック）
+            matching_files = [f for f in available_files if f.name == file_path_normalized]
+            if matching_files:
+                file_path_obj = matching_files[0]
+                app.logger.info(f"Found file by name match: {file_path_obj}")
+            else:
+                return jsonify({
+                    'success': False, 
+                    'error': f'ファイルが見つかりません: {file_path_obj}',
+                    'requested_path': file_path,
+                    'normalized_path': file_path_normalized,
+                    'results_folder': str(results_folder_abs),
+                    'available_files': [f.name for f in available_files]
+                }), 404
         
         return send_file(
             str(file_path_obj),
             as_attachment=True,
-            download_name=file_path_obj.name
+            download_name=file_path_obj.name,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        import traceback
+        error_trace = traceback.format_exc()
+        app.logger.error(f"Error in download_results: {error_trace}")
+        return jsonify({'success': False, 'error': f'ダウンロード中にエラーが発生しました: {str(e)}'}), 500
 
 
 @app.route('/api/open-excel-file', methods=['POST'])
@@ -781,11 +876,13 @@ def browse_folder():
         default_folder = os.environ.get('DEFAULT_SEARCH_FOLDER', '')
         
         if default_folder and Path(default_folder).exists():
-            return jsonify({
+            response = jsonify({
                 'success': True,
                 'folder_path': default_folder,
                 'message': 'デフォルトフォルダを使用します'
             })
+            response.headers['Content-Type'] = 'application/json'
+            return response
         
         # GUIダイアログを試みる（ローカル環境でのみ動作）
         try:
@@ -808,58 +905,72 @@ def browse_folder():
                     if folder_path:
                         # 完全パスを正規化
                         folder_path = os.path.abspath(folder_path)
-                        return jsonify({
+                        response = jsonify({
                             'success': True,
                             'folder_path': folder_path,
                             'message': f'フォルダが選択されました: {folder_path}'
                         })
+                        response.headers['Content-Type'] = 'application/json'
+                        return response
                     else:
-                        return jsonify({
+                        response = jsonify({
                             'success': False,
                             'error': 'フォルダが選択されませんでした'
                         })
+                        response.headers['Content-Type'] = 'application/json'
+                        return response
                 except Exception as tk_error:
                     # Tkinter関連のエラー
                     app.logger.error(f"Tkinter error: {str(tk_error)}")
-                    return jsonify({
+                    response = jsonify({
                         'success': False,
                         'error': 'GUI環境が利用できません。フォルダパスを手動で入力してください。'
                     })
+                    response.headers['Content-Type'] = 'application/json'
+                    return response
             else:
-                return jsonify({
+                response = jsonify({
                     'success': False,
                     'error': 'フォルダ選択機能はWindows環境でのみ利用可能です'
                 })
+                response.headers['Content-Type'] = 'application/json'
+                return response
                 
         except ImportError:
             # tkinterが利用できない場合
-            return jsonify({
+            response = jsonify({
                 'success': False,
                 'error': 'フォルダ選択機能は利用できません。フォルダパスを手動で入力してください。'
             })
+            response.headers['Content-Type'] = 'application/json'
+            return response
         except Exception as e:
             # GUI関連のエラー
             error_msg = str(e)
             app.logger.error(f"Browse folder error: {error_msg}")
             if 'display' in error_msg.lower() or 'DISPLAY' in error_msg:
-                return jsonify({
+                response = jsonify({
                     'success': False,
                     'error': 'GUI環境が利用できません。フォルダパスを手動で入力してください。'
                 })
             else:
-                return jsonify({
+                response = jsonify({
                     'success': False,
                     'error': f'フォルダ選択中にエラーが発生しました: {error_msg}'
                 })
+            response.headers['Content-Type'] = 'application/json'
+            return response
             
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
         app.logger.error(f"Unexpected error in browse_folder: {error_trace}")
-        return jsonify({
+        response = jsonify({
             'success': False,
             'error': f'予期しないエラーが発生しました: {str(e)}'
-        }), 500
+        })
+        response.headers['Content-Type'] = 'application/json'
+        return response, 500
 
 
 @app.route('/api/get-folder-path', methods=['POST'])

@@ -53,16 +53,37 @@ function App() {
         // レスポンスがエラーの場合
         let errorMessage = `HTTP error! status: ${response.status}`
         try {
-          const errorData = await response.json()
-          errorMessage = errorData.error || errorMessage
+          // レスポンスのテキストを取得してからJSON解析
+          const text = await responseClone.text()
+          if (text && text.trim() !== '') {
+            try {
+              const errorData = JSON.parse(text)
+              errorMessage = errorData.error || errorMessage
+            } catch (parseError) {
+              // JSON解析に失敗した場合は、テキストをそのまま使用
+              errorMessage = text || errorMessage
+            }
+          }
         } catch (e) {
-          // JSON解析に失敗した場合は、ステータスコードのみを使用
+          // テキスト読み込みも失敗した場合は、ステータスコードのみを使用
           errorMessage = `HTTP error! status: ${response.status}`
         }
         throw new Error(errorMessage)
       }
 
-      const data = await response.json()
+      // レスポンスのテキストを取得してからJSON解析
+      const text = await response.text()
+      if (!text || text.trim() === '') {
+        throw new Error('Empty response from server')
+      }
+
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (parseError) {
+        console.error('Failed to parse JSON response:', text)
+        throw new Error('Invalid JSON response from server')
+      }
 
       if (data.success) {
         setSearchResults(data.results || [])
@@ -117,22 +138,37 @@ function App() {
       if (!response.ok) {
         let errorMessage = `HTTP error! status: ${response.status}`
         try {
-          const errorData = await response.json()
-          errorMessage = errorData.error || errorMessage
-        } catch (e) {
-          // JSON解析に失敗した場合は、テキストとして読み込む
-          try {
-            const errorText = await responseClone.text()
-            errorMessage = errorText || errorMessage
-          } catch (textError) {
-            // テキスト読み込みも失敗した場合は、ステータスコードのみを使用
-            errorMessage = `HTTP error! status: ${response.status}`
+          // レスポンスのテキストを取得してからJSON解析
+          const text = await responseClone.text()
+          if (text && text.trim() !== '') {
+            try {
+              const errorData = JSON.parse(text)
+              errorMessage = errorData.error || errorMessage
+            } catch (parseError) {
+              // JSON解析に失敗した場合は、テキストをそのまま使用
+              errorMessage = text || errorMessage
+            }
           }
+        } catch (e) {
+          // テキスト読み込みも失敗した場合は、ステータスコードのみを使用
+          errorMessage = `HTTP error! status: ${response.status}`
         }
         throw new Error(errorMessage)
       }
 
-      const data = await response.json()
+      // レスポンスのテキストを取得してからJSON解析
+      const text = await response.text()
+      if (!text || text.trim() === '') {
+        throw new Error('Empty response from server')
+      }
+
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (parseError) {
+        console.error('Failed to parse JSON response:', text)
+        throw new Error('Invalid JSON response from server')
+      }
 
       if (data.success) {
         setSearchResults(data.results || [])
@@ -171,7 +207,23 @@ function App() {
         }),
       })
 
-      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      // レスポンスのテキストを取得してからJSON解析
+      const text = await response.text()
+      if (!text || text.trim() === '') {
+        throw new Error('Empty response from server')
+      }
+
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (parseError) {
+        console.error('Failed to parse JSON response:', text)
+        throw new Error('Invalid JSON response from server')
+      }
 
       if (data.success) {
         setSelectedCell(data)
@@ -198,7 +250,23 @@ function App() {
         }),
       })
 
-      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      // レスポンスのテキストを取得してからJSON解析
+      const text = await response.text()
+      if (!text || text.trim() === '') {
+        throw new Error('Empty response from server')
+      }
+
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (parseError) {
+        console.error('Failed to parse JSON response:', text)
+        throw new Error('Invalid JSON response from server')
+      }
 
       if (data.success) {
         // 成功メッセージは表示しない（ファイルが開かれるだけ）

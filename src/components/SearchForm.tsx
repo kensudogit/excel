@@ -34,7 +34,24 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, onSearchWithFiles, is
         },
       })
 
-      const data = await response.json()
+      // レスポンスが空でないか確認
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      // レスポンスのテキストを取得してからJSON解析
+      const text = await response.text()
+      if (!text || text.trim() === '') {
+        throw new Error('Empty response from server')
+      }
+
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (parseError) {
+        console.error('Failed to parse JSON response:', text)
+        throw new Error('Invalid JSON response from server')
+      }
 
       if (data.success && data.folder_path) {
         setFolderPath(data.folder_path)
@@ -84,7 +101,24 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, onSearchWithFiles, is
           },
         })
 
-        const data = await response.json()
+        // レスポンスが空でないか確認
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        // レスポンスのテキストを取得してからJSON解析
+        const text = await response.text()
+        if (!text || text.trim() === '') {
+          throw new Error('Empty response from server')
+        }
+
+        let data
+        try {
+          data = JSON.parse(text)
+        } catch (parseError) {
+          console.error('Failed to parse JSON response:', text)
+          throw new Error('Invalid JSON response from server')
+        }
 
         if (data.success && data.folder_path) {
           // バックエンドから取得した完全パスを使用
@@ -226,7 +260,24 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, onSearchWithFiles, is
           },
         })
 
-        const data = await response.json()
+        // レスポンスが空でないか確認
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        // レスポンスのテキストを取得してからJSON解析
+        const text = await response.text()
+        if (!text || text.trim() === '') {
+          throw new Error('Empty response from server')
+        }
+
+        let data
+        try {
+          data = JSON.parse(text)
+        } catch (parseError) {
+          console.error('Failed to parse JSON response:', text)
+          throw new Error('Invalid JSON response from server')
+        }
 
         if (data.success && data.folder_path) {
           // バックエンドから取得した完全パスを使用
@@ -301,7 +352,24 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, onSearchWithFiles, is
           },
         })
 
-        const data = await response.json()
+        // レスポンスが空でないか確認
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        // レスポンスのテキストを取得してからJSON解析
+        const text = await response.text()
+        if (!text || text.trim() === '') {
+          throw new Error('Empty response from server')
+        }
+
+        let data
+        try {
+          data = JSON.parse(text)
+        } catch (parseError) {
+          console.error('Failed to parse JSON response:', text)
+          throw new Error('Invalid JSON response from server')
+        }
 
         if (data.success && data.folder_path) {
           // バックエンドから取得した完全パスを使用
