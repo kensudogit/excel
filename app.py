@@ -146,6 +146,43 @@ def create_results_workbook(search_results, keywords):
     return wb
 
 
+def normalize_path(path_str):
+    """
+    パスを正規化する（スラッシュ/バックスラッシュの統一、相対パスの解決など）
+    """
+    if not path_str:
+        return None
+    
+    # 文字列の前後の空白を削除
+    path_str = path_str.strip()
+    
+    # 空文字列の場合はNoneを返す
+    if not path_str:
+        return None
+    
+    # パスを正規化（Pathオブジェクトを使用）
+    try:
+        # まずPathオブジェクトに変換
+        path_obj = Path(path_str)
+        
+        # 絶対パスに変換（存在する場合）
+        if path_obj.exists():
+            path_obj = path_obj.resolve()
+        else:
+            # 存在しない場合でも、絶対パスに変換を試みる
+            try:
+                path_obj = path_obj.resolve()
+            except (OSError, RuntimeError):
+                # 解決できない場合は、元のパスを使用
+                pass
+        
+        return path_obj
+    except Exception as e:
+        app.logger.warning(f"Path normalization error for '{path_str}': {str(e)}")
+        # エラーが発生した場合は、元のパスをPathオブジェクトとして返す
+        return Path(path_str)
+
+
 @app.route('/api/search', methods=['POST'])
 def search_excel_files():
     """
@@ -169,18 +206,74 @@ def search_excel_files():
         if not keywords or len(keywords) == 0:
             return jsonify({'success': False, 'error': 'キーワードが指定されていません'}), 400
         
-        folder = Path(folder_path)
+        # パスを正規化
+        original_path = folder_path
+        folder = normalize_path(folder_path)
+        
+        # ログ出力（デバッグ用）
+        app.logger.info(f"Search request - Original path: '{original_path}'")
+        app.logger.info(f"Search request - Normalized path: '{folder}'")
+        app.logger.info(f"Search request - Path exists: {folder.exists() if folder else False}")
+        app.logger.info(f"Search request - Current working directory: {os.getcwd()}")
+        
+        if not folder:
+            return jsonify({
+                'success': False, 
+                'error': f'フォルダパスが無効です: {original_path}',
+                'suggestion': '絶対パス（例: C:\\Users\\Documents\\ExcelFiles）を入力してください'
+            }), 400
+        
         if not folder.exists():
-            return jsonify({'success': False, 'error': f'指定されたフォルダが見つかりません: {folder_path}'}), 404
+            # より詳細なエラーメッセージを提供
+            error_msg = f'指定されたフォルダが見つかりません: {original_path}'
+            suggestion = '以下の点を確認してください:\n'
+            suggestion += '1. フォルダパスが正しいか確認してください\n'
+            suggestion += '2. 絶対パス（例: C:\\Users\\Documents\\ExcelFiles）を使用してください\n'
+            suggestion += '3. 別のPCにデプロイした場合は、そのPC上に存在するフォルダパスを入力してください\n'
+            suggestion += '4. フォルダ選択ボタンを使用して、正しいフォルダを選択してください'
+            
+            app.logger.error(f"Folder not found: '{original_path}' (normalized: '{folder}')")
+            return jsonify({
+                'success': False, 
+                'error': error_msg,
+                'suggestion': suggestion,
+                'original_path': original_path,
+                'normalized_path': str(folder)
+            }), 404
         
         if not folder.is_dir():
-            return jsonify({'success': False, 'error': f'指定されたパスはフォルダではありません: {folder_path}'}), 400
+            return jsonify({
+                'success': False, 
+                'error': f'指定されたパスはフォルダではありません: {original_path}',
+                'suggestion': 'フォルダを指定してください（ファイルではなく）'
+            }), 400
         
         # Excelファイルを検索
         excel_files = list(folder.glob('*.xlsx')) + list(folder.glob('*.xls'))
         
+        app.logger.info(f"Found {len(excel_files)} Excel files in folder: {folder}")
+        
         if not excel_files:
-            return jsonify({'success': False, 'error': 'Excelファイルが見つかりませんでした'}), 404
+            # フォルダ内のファイル一覧を取得（デバッグ用）
+            all_files = list(folder.iterdir())
+            file_list = [f.name for f in all_files if f.is_file()][:10]  # 最初の10個のみ
+            
+            error_msg = f'フォルダ内にExcelファイルが見つかりませんでした: {original_path}'
+            suggestion = '以下の点を確認してください:\n'
+            suggestion += '1. フォルダ内に.xlsxまたは.xlsファイルが存在するか確認してください\n'
+            suggestion += '2. ファイル名にスペースや特殊文字が含まれていないか確認してください'
+            
+            if file_list:
+                suggestion += f'\nフォルダ内のファイル（最初の10個）: {", ".join(file_list)}'
+            
+            app.logger.warning(f"No Excel files found in folder: '{folder}' (files in folder: {len(all_files)})")
+            return jsonify({
+                'success': False, 
+                'error': error_msg,
+                'suggestion': suggestion,
+                'folder_path': str(folder),
+                'files_in_folder': file_list
+            }), 404
         
         # 各ファイルを検索
         all_results = []

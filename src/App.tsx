@@ -10,6 +10,8 @@ function App() {
   const [selectedCell, setSelectedCell] = useState<CellDetail | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [outputFile, setOutputFile] = useState<string>('')
+  const [errorMessage, setErrorMessage] = useState<string>('')
+  const [errorSuggestion, setErrorSuggestion] = useState<string>('')
 
   // ローディング中にカーソルを変更
   useEffect(() => {
@@ -33,6 +35,8 @@ function App() {
     setSearchResults([])
     setSelectedCell(null)
     setOutputFile('')
+    setErrorMessage('')
+    setErrorSuggestion('')
 
     try {
       const response = await fetch('/api/search', {
@@ -52,6 +56,8 @@ function App() {
       if (!response.ok) {
         // レスポンスがエラーの場合
         let errorMessage = `HTTP error! status: ${response.status}`
+        let errorSuggestion = ''
+        let errorDetails: any = {}
         try {
           // レスポンスのテキストを取得してからJSON解析
           const text = await responseClone.text()
@@ -59,6 +65,13 @@ function App() {
             try {
               const errorData = JSON.parse(text)
               errorMessage = errorData.error || errorMessage
+              errorSuggestion = errorData.suggestion || ''
+              errorDetails = {
+                original_path: errorData.original_path,
+                normalized_path: errorData.normalized_path,
+                folder_path: errorData.folder_path,
+                files_in_folder: errorData.files_in_folder
+              }
             } catch (parseError) {
               // JSON解析に失敗した場合は、テキストをそのまま使用
               errorMessage = text || errorMessage
@@ -68,7 +81,25 @@ function App() {
           // テキスト読み込みも失敗した場合は、ステータスコードのみを使用
           errorMessage = `HTTP error! status: ${response.status}`
         }
-        throw new Error(errorMessage)
+        
+        // エラーメッセージを構築
+        let fullErrorMessage = errorMessage
+        if (errorSuggestion) {
+          fullErrorMessage += '\n\n' + errorSuggestion
+        }
+        if (errorDetails.original_path && errorDetails.normalized_path) {
+          fullErrorMessage += `\n\n入力されたパス: ${errorDetails.original_path}`
+          fullErrorMessage += `\n正規化後のパス: ${errorDetails.normalized_path}`
+        }
+        if (errorDetails.files_in_folder && errorDetails.files_in_folder.length > 0) {
+          fullErrorMessage += `\n\nフォルダ内のファイル: ${errorDetails.files_in_folder.join(', ')}`
+        }
+        
+        // エラーオブジェクトに追加情報を付与
+        const error = new Error(fullErrorMessage) as any
+        error.suggestion = errorSuggestion
+        error.details = errorDetails
+        throw error
       }
 
       // レスポンスのテキストを取得してからJSON解析
@@ -88,16 +119,40 @@ function App() {
       if (data.success) {
         setSearchResults(data.results || [])
         setOutputFile(data.output_file || '')
+        setErrorMessage('')
+        setErrorSuggestion('')
       } else {
-        console.error('Search error:', data.error || '検索に失敗しました')
+        const errorMsg = data.error || '検索に失敗しました'
+        const suggestion = data.suggestion || ''
+        console.error('Search error:', errorMsg)
+        if (suggestion) {
+          console.error('Suggestion:', suggestion)
+        }
+        setErrorMessage(errorMsg)
+        setErrorSuggestion(suggestion)
       }
     } catch (error) {
       console.error('Search error:', error)
+      let errorMsg = '不明なエラー'
+      let suggestion = ''
+      
       if (error instanceof SyntaxError) {
-        console.error('サーバーからの応答を解析できませんでした。サーバーが正常に動作しているか確認してください。')
-      } else {
-        console.error(`検索中にエラーが発生しました: ${error instanceof Error ? error.message : '不明なエラー'}`)
+        errorMsg = 'サーバーからの応答を解析できませんでした。サーバーが正常に動作しているか確認してください。'
+      } else if (error instanceof Error) {
+        errorMsg = error.message
+        // エラーオブジェクトにsuggestionが含まれている場合
+        if ((error as any).suggestion) {
+          suggestion = (error as any).suggestion
+        }
       }
+      
+      console.error(`検索中にエラーが発生しました: ${errorMsg}`)
+      if (suggestion) {
+        console.error('提案:', suggestion)
+      }
+      
+      setErrorMessage(errorMsg)
+      setErrorSuggestion(suggestion)
     } finally {
       setIsLoading(false)
     }
@@ -108,6 +163,8 @@ function App() {
     setSearchResults([])
     setSelectedCell(null)
     setOutputFile('')
+    setErrorMessage('')
+    setErrorSuggestion('')
 
     try {
       // ファイルが空でないか確認
@@ -173,18 +230,41 @@ function App() {
       if (data.success) {
         setSearchResults(data.results || [])
         setOutputFile(data.output_file || '')
+        setErrorMessage('')
+        setErrorSuggestion('')
       } else {
-        console.error('Search error:', data.error || '検索に失敗しました')
+        const errorMsg = data.error || '検索に失敗しました'
+        const suggestion = data.suggestion || ''
+        console.error('Search error:', errorMsg)
+        if (suggestion) {
+          console.error('Suggestion:', suggestion)
+        }
+        setErrorMessage(errorMsg)
+        setErrorSuggestion(suggestion)
       }
     } catch (error) {
       console.error('Search with files error:', error)
+      let errorMsg = '不明なエラー'
+      let suggestion = ''
+      
       if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-        console.error('サーバーに接続できませんでした。バックエンドサーバー（ポート5001）が起動しているか確認してください。')
+        errorMsg = 'サーバーに接続できませんでした。バックエンドサーバー（ポート5001）が起動しているか確認してください。'
       } else if (error instanceof SyntaxError) {
-        console.error('サーバーからの応答を解析できませんでした。サーバーが正常に動作しているか確認してください。')
-      } else {
-        console.error(`検索中にエラーが発生しました: ${error instanceof Error ? error.message : '不明なエラー'}`)
+        errorMsg = 'サーバーからの応答を解析できませんでした。サーバーが正常に動作しているか確認してください。'
+      } else if (error instanceof Error) {
+        errorMsg = error.message
+        if ((error as any).suggestion) {
+          suggestion = (error as any).suggestion
+        }
       }
+      
+      console.error(`検索中にエラーが発生しました: ${errorMsg}`)
+      if (suggestion) {
+        console.error('提案:', suggestion)
+      }
+      
+      setErrorMessage(errorMsg)
+      setErrorSuggestion(suggestion)
     } finally {
       setIsLoading(false)
     }
@@ -298,6 +378,59 @@ function App() {
 
       <main className="app-main">
         <SearchForm onSearch={handleSearch} onSearchWithFiles={handleSearchWithFiles} isLoading={isLoading} />
+
+        {errorMessage && (
+          <div className="error-message-container" style={{
+            margin: '1rem 0',
+            padding: '1rem',
+            backgroundColor: '#fee',
+            border: '1px solid #fcc',
+            borderRadius: '6px',
+            color: '#c33'
+          }}>
+            <div style={{ fontWeight: 'bold', marginBottom: '0.5rem', fontSize: '1.1rem' }}>
+              ⚠️ エラーが発生しました
+            </div>
+            <div style={{ whiteSpace: 'pre-wrap', marginBottom: '0.5rem' }}>
+              {errorMessage}
+            </div>
+            {errorSuggestion && (
+              <div style={{
+                marginTop: '0.75rem',
+                padding: '0.75rem',
+                backgroundColor: '#fff9e6',
+                border: '1px solid #ffd700',
+                borderRadius: '4px',
+                whiteSpace: 'pre-wrap',
+                fontSize: '0.95rem',
+                color: '#856404'
+              }}>
+                <strong>💡 解決方法:</strong>
+                <div style={{ marginTop: '0.5rem' }}>
+                  {errorSuggestion}
+                </div>
+              </div>
+            )}
+            <button
+              onClick={() => {
+                setErrorMessage('')
+                setErrorSuggestion('')
+              }}
+              style={{
+                marginTop: '0.75rem',
+                padding: '0.5rem 1rem',
+                backgroundColor: '#c33',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.9rem'
+              }}
+            >
+              閉じる
+            </button>
+          </div>
+        )}
 
         {searchResults.length > 0 && (
           <div className="results-section">
