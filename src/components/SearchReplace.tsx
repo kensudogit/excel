@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import './SearchReplace.css'
 
 interface SearchReplaceResult {
@@ -32,7 +32,7 @@ const SearchReplace: React.FC<SearchReplaceProps> = ({ onClose }) => {
   const [customExtension, setCustomExtension] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [results, setResults] = useState<SearchReplaceResult[]>([])
-  const [previewMode, setPreviewMode] = useState(true)
+  const [_previewMode, setPreviewMode] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [totalStats, setTotalStats] = useState<{
