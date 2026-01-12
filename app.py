@@ -1297,24 +1297,26 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     app.logger.setLevel(logging.INFO)
     
-    # 環境変数から設定を取得（デフォルト値あり）
-    port = int(os.environ.get('FLASK_PORT', '5001'))
-    debug_mode = os.environ.get('FLASK_DEBUG', 'True').lower() in ('true', '1', 'yes')
-    host = os.environ.get('FLASK_HOST', '0.0.0.0')
-    
-    print(f"Starting Flask server on http://{host}:{port}")
-    print(f"Debug mode: {debug_mode}")
-    print("API endpoints:")
-    print("  - POST /api/search")
-    print("  - POST /api/search-files")
-    print("  - POST /api/get-cell-details")
-    print("  - POST /api/open-excel-file")
-    print("  - POST /api/search-replace")
-    print("  - GET /api/health")
-    print("\n環境変数で設定を変更できます:")
-    print("  - FLASK_PORT: ポート番号（デフォルト: 5001）")
-    print("  - FLASK_DEBUG: デバッグモード（デフォルト: True）")
-    print("  - FLASK_HOST: ホスト（デフォルト: 0.0.0.0）")
-    print("  - DEFAULT_SEARCH_FOLDER: デフォルト検索フォルダ（オプション）")
-    
-    app.run(debug=debug_mode, port=port, host=host)
+    # Vercel環境ではサーバーを起動しない
+    if not os.environ.get('VERCEL'):
+        # 環境変数から設定を取得（デフォルト値あり）
+        port = int(os.environ.get('FLASK_PORT', '5001'))
+        debug_mode = os.environ.get('FLASK_DEBUG', 'True').lower() in ('true', '1', 'yes')
+        host = os.environ.get('FLASK_HOST', '0.0.0.0')
+        
+        print(f"Starting Flask server on http://{host}:{port}")
+        print(f"Debug mode: {debug_mode}")
+        print("API endpoints:")
+        print("  - POST /api/search")
+        print("  - POST /api/search-files")
+        print("  - POST /api/get-cell-details")
+        print("  - POST /api/open-excel-file")
+        print("  - POST /api/search-replace")
+        print("  - GET /api/health")
+        print("\n環境変数で設定を変更できます:")
+        print("  - FLASK_PORT: ポート番号（デフォルト: 5001）")
+        print("  - FLASK_DEBUG: デバッグモード（デフォルト: True）")
+        print("  - FLASK_HOST: ホスト（デフォルト: 0.0.0.0）")
+        print("  - DEFAULT_SEARCH_FOLDER: デフォルト検索フォルダ（オプション）")
+        
+        app.run(debug=debug_mode, port=port, host=host)

@@ -26,8 +26,14 @@ RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 os.environ['UPLOAD_FOLDER'] = str(UPLOAD_DIR)
 os.environ['RESULTS_FOLDER'] = str(RESULTS_DIR)
 
-# Flaskアプリをインポート
-from app import app
+# Flaskアプリをインポート（エラーハンドリング付き）
+try:
+    from app import app
+except Exception as e:
+    import traceback
+    error_trace = traceback.format_exc()
+    print(f"Error importing Flask app: {error_trace}")
+    raise
 
 def handler(request):
     """
@@ -43,6 +49,8 @@ def handler(request):
             # パスから/api/プレフィックスを削除
             if path.startswith('/api/'):
                 path = path[4:]  # '/api/'を削除
+            elif path.startswith('api/'):
+                path = path[4:]  # 'api/'を削除
             query_string = request.get('queryStringParameters', {}) or {}
             headers = request.get('headers', {}) or {}
             body = request.get('body', '')
@@ -52,9 +60,15 @@ def handler(request):
             path = getattr(request, 'path', '/')
             if path.startswith('/api/'):
                 path = path[4:]
+            elif path.startswith('api/'):
+                path = path[4:]
             query_string = getattr(request, 'queryStringParameters', {}) or {}
             headers = getattr(request, 'headers', {}) or {}
             body = getattr(request, 'body', '')
+        
+        # パスが空の場合はルートに設定
+        if not path or path == '':
+            path = '/'
         
         # クエリ文字列を構築
         query_parts = []
@@ -126,7 +140,9 @@ def handler(request):
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
+        # エラーをログに出力（Vercelのログで確認可能）
         print(f"Error in handler: {error_trace}")
+        print(f"Request: {request}")
         return {
             'statusCode': 500,
             'headers': {
@@ -136,6 +152,7 @@ def handler(request):
             'body': json.dumps({
                 'success': False,
                 'error': str(e),
+                'error_type': type(e).__name__,
                 'traceback': error_trace
-            })
+            }, ensure_ascii=False)
         }
