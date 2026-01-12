@@ -17,6 +17,20 @@ from openpyxl.styles import Font, PatternFill, Alignment
 import pandas as pd
 from datetime import datetime
 
+# Hyperlinkのインポート（オプション、利用できない場合は文字列を使用）
+try:
+    from openpyxl.cell.hyperlink import Hyperlink
+    HYPERLINK_AVAILABLE = True
+except ImportError:
+    try:
+        # 別のインポート方法を試す
+        from openpyxl.cell import Hyperlink
+        HYPERLINK_AVAILABLE = True
+    except ImportError:
+        HYPERLINK_AVAILABLE = False
+        # app.loggerはまだ定義されていないため、printを使用
+        print("Warning: Hyperlink class not available, will use string hyperlinks")
+
 # Windows環境でExcelを操作するためのライブラリ（オプション）
 try:
     import win32com.client
@@ -33,10 +47,24 @@ app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
 # 設定
 # アプリケーションのベースディレクトリを取得（app.pyがあるディレクトリ）
 BASE_DIR = Path(__file__).parent.resolve()
-UPLOAD_FOLDER = BASE_DIR / 'uploads'
-RESULTS_FOLDER = BASE_DIR / 'results'
-UPLOAD_FOLDER.mkdir(exist_ok=True)
-RESULTS_FOLDER.mkdir(exist_ok=True)
+
+# Vercel環境の場合は/tmpディレクトリを使用、それ以外は通常のディレクトリ
+if os.environ.get('VERCEL'):
+    # Vercel環境
+    TMP_BASE = Path('/tmp')
+    UPLOAD_FOLDER = TMP_BASE / 'uploads'
+    RESULTS_FOLDER = TMP_BASE / 'results'
+else:
+    # ローカル環境
+    UPLOAD_FOLDER = BASE_DIR / 'uploads'
+    RESULTS_FOLDER = BASE_DIR / 'results'
+
+# 環境変数で上書き可能
+UPLOAD_FOLDER = Path(os.environ.get('UPLOAD_FOLDER', str(UPLOAD_FOLDER)))
+RESULTS_FOLDER = Path(os.environ.get('RESULTS_FOLDER', str(RESULTS_FOLDER)))
+
+UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+RESULTS_FOLDER.mkdir(parents=True, exist_ok=True)
 
 
 def search_keywords_in_excel(file_path, keywords):
@@ -107,6 +135,28 @@ def create_results_workbook(search_results, keywords):
     
     # データ行
     for result in search_results:
+        file_path = result['file']
+        file_path_obj = Path(file_path)
+        
+        # ファイルパスを絶対パスに変換（ハイパーリンク用）
+        try:
+            if file_path_obj.exists():
+                absolute_file_path = str(file_path_obj.resolve())
+            else:
+                absolute_file_path = str(file_path_obj)
+        except:
+            absolute_file_path = str(file_path)
+        
+        # Windowsの場合はfile:///プレフィックスを追加
+        if platform.system() == 'Windows':
+            # バックスラッシュをスラッシュに変換
+            hyperlink_path = absolute_file_path.replace('\\', '/')
+            # file:///プレフィックスを追加（3つのスラッシュ）
+            hyperlink_path = f"file:///{hyperlink_path}"
+        else:
+            # Linux/Macの場合はfile://プレフィックス
+            hyperlink_path = f"file://{absolute_file_path}"
+        
         row = [
             Path(result['file']).name,
             result['sheet'],
@@ -118,6 +168,126 @@ def create_results_workbook(search_results, keywords):
         ]
         ws.append(row)
         
+        current_row = ws.max_row
+        
+        # ファイル名のセル（1列目）にハイパーリンクを設定
+        file_name_cell = ws.cell(row=current_row, column=1)
+        try:
+            if HYPERLINK_AVAILABLE:
+                # Hyperlinkオブジェクトを使用してハイパーリンクとツールチップを設定
+                try:
+                    file_name_cell.hyperlink = Hyperlink(
+                        target=hyperlink_path,
+                        tooltip=f"クリックしてファイルを開く: {absolute_file_path}"
+                    )
+                except (TypeError, AttributeError):
+                    # 古いバージョンのopenpyxlではtooltipパラメータがない場合がある
+                    try:
+                        file_name_cell.hyperlink = Hyperlink(target=hyperlink_path)
+                    except Exception:
+                        # Hyperlinkオブジェクトの作成に失敗した場合は文字列を直接設定
+                        file_name_cell.hyperlink = hyperlink_path
+            else:
+                # Hyperlinkクラスが利用できない場合は文字列を直接設定
+                file_name_cell.hyperlink = hyperlink_path
+            
+            file_name_cell.font = Font(color="0563C1", underline="single")
+        except Exception as e:
+            # エラーが発生しても処理を継続（ログ出力のみ）
+            try:
+                import logging
+                logging.warning(f"Failed to set hyperlink for {file_path}: {str(e)}")
+            except:
+                pass
+        
+        # セル値のセル（5列目）に特定のセルへのハイパーリンクを設定
+        cell_value_cell = ws.cell(row=current_row, column=5)
+        try:
+            # ファイルパスが存在する場合、または絶対パスが取得できた場合はハイパーリンクを設定
+            # アップロードされたファイルの場合、ファイル名のみの可能性があるが、可能な限りハイパーリンクを設定
+            if absolute_file_path and (file_path_obj.exists() or os.path.isabs(absolute_file_path) or '\\' in absolute_file_path or '/' in absolute_file_path):
+                # シート名とセル位置を含むハイパーリンクを作成
+                sheet_name = result['sheet']
+                row_num = result['row']
+                col_num = result['col']
+                
+                # 列番号をExcelの列文字（A, B, C...）に変換
+                def number_to_excel_column(n):
+                    """数値をExcelの列文字に変換（1=A, 2=B, ...）"""
+                    result_col = ""
+                    while n > 0:
+                        n -= 1
+                        result_col = chr(65 + (n % 26)) + result_col
+                        n //= 26
+                    return result_col
+                
+                col_letter = number_to_excel_column(col_num)
+                # シート名に特殊文字が含まれている場合はシングルクォートで囲む
+                if ' ' in sheet_name or '-' in sheet_name or any(c in sheet_name for c in ['!', '@', '#', '$', '%', '^', '&', '*', '(', ')']):
+                    cell_reference = f"'{sheet_name}'!{col_letter}{row_num}"
+                else:
+                    cell_reference = f"{sheet_name}!{col_letter}{row_num}"
+                
+                # セルへのジャンプを含むハイパーリンクパス
+                cell_hyperlink_path = f"{hyperlink_path}#{cell_reference}"
+                
+                if HYPERLINK_AVAILABLE:
+                    try:
+                        cell_value_cell.hyperlink = Hyperlink(
+                            target=cell_hyperlink_path,
+                            tooltip=f"クリックしてセル {cell_reference} にジャンプ: {absolute_file_path}"
+                        )
+                    except (TypeError, AttributeError):
+                        try:
+                            cell_value_cell.hyperlink = Hyperlink(target=cell_hyperlink_path)
+                        except Exception:
+                            cell_value_cell.hyperlink = cell_hyperlink_path
+                else:
+                    cell_value_cell.hyperlink = cell_hyperlink_path
+                
+                cell_value_cell.font = Font(color="0563C1", underline="single")
+            else:
+                # ファイルパスが取得できない場合でも、少なくともフォントを設定
+                # （アップロードされたファイルの場合など）
+                cell_value_cell.font = Font(color="000000")  # 通常の黒色
+        except Exception as e:
+            # エラーが発生しても処理を継続（ログ出力のみ）
+            try:
+                import logging
+                logging.warning(f"Failed to set cell value hyperlink: {str(e)}")
+            except:
+                pass
+        
+        # ファイルパスのセル（7列目）にもハイパーリンクを設定
+        file_path_cell = ws.cell(row=current_row, column=7)
+        try:
+            if HYPERLINK_AVAILABLE:
+                # Hyperlinkオブジェクトを使用してハイパーリンクとツールチップを設定
+                try:
+                    file_path_cell.hyperlink = Hyperlink(
+                        target=hyperlink_path,
+                        tooltip=f"クリックしてファイルを開く: {absolute_file_path}"
+                    )
+                except (TypeError, AttributeError):
+                    # 古いバージョンのopenpyxlではtooltipパラメータがない場合がある
+                    try:
+                        file_path_cell.hyperlink = Hyperlink(target=hyperlink_path)
+                    except Exception:
+                        # Hyperlinkオブジェクトの作成に失敗した場合は文字列を直接設定
+                        file_path_cell.hyperlink = hyperlink_path
+            else:
+                # Hyperlinkクラスが利用できない場合は文字列を直接設定
+                file_path_cell.hyperlink = hyperlink_path
+            
+            file_path_cell.font = Font(color="0563C1", underline="single")
+        except Exception as e:
+            # エラーが発生しても処理を継続（ログ出力のみ）
+            try:
+                import logging
+                logging.warning(f"Failed to set hyperlink for file path {file_path}: {str(e)}")
+            except:
+                pass
+        
         # キーワードに応じて行の色を変更
         keyword_colors = {
             keywords[0]: "FFE6E6" if len(keywords) > 0 else "FFFFFF",
@@ -128,7 +298,10 @@ def create_results_workbook(search_results, keywords):
         fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type="solid")
         
         for col in range(1, len(row) + 1):
-            ws.cell(row=ws.max_row, column=col).fill = fill
+            cell = ws.cell(row=current_row, column=col)
+            # ハイパーリンクが設定されているセル（1列目: ファイル名、5列目: セル値、7列目: ファイルパス）のフォント色は保持
+            if col not in [1, 5, 7] or not cell.hyperlink:
+                cell.fill = fill
     
     # 列幅の自動調整
     for col in ws.columns:
@@ -586,19 +759,30 @@ def download_results():
                 app.logger.error(f"Full path attempted: {file_path_obj}")
             
             # ファイル名が一致するファイルを探す（フォールバック）
-            matching_files = [f for f in available_files if f.name == file_path_normalized]
+            # ファイル名のみで比較（パス情報を無視）
+            file_name_only = Path(file_path_normalized).name
+            matching_files = [f for f in available_files if f.name == file_name_only]
             if matching_files:
                 file_path_obj = matching_files[0]
                 app.logger.info(f"Found file by name match: {file_path_obj}")
             else:
-                return jsonify({
-                    'success': False, 
-                    'error': f'ファイルが見つかりません: {file_path_obj}',
-                    'requested_path': file_path,
-                    'normalized_path': file_path_normalized,
-                    'results_folder': str(results_folder_abs),
-                    'available_files': [f.name for f in available_files]
-                }), 404
+                # さらに、ファイル名の部分一致も試す
+                matching_files = [f for f in available_files if file_name_only in f.name or f.name in file_name_only]
+                if matching_files:
+                    # 最新のファイルを選択（タイムスタンプが新しいもの）
+                    matching_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+                    file_path_obj = matching_files[0]
+                    app.logger.info(f"Found file by partial name match: {file_path_obj}")
+                else:
+                    return jsonify({
+                        'success': False, 
+                        'error': f'ファイルが見つかりません: {file_path_obj}',
+                        'requested_path': file_path,
+                        'normalized_path': file_path_normalized,
+                        'file_name_only': file_name_only,
+                        'results_folder': str(results_folder_abs),
+                        'available_files': [f.name for f in available_files]
+                    }), 404
         
         return send_file(
             str(file_path_obj),
@@ -1112,7 +1296,14 @@ if __name__ == '__main__':
     import logging
     logging.basicConfig(level=logging.INFO)
     app.logger.setLevel(logging.INFO)
-    print("Starting Flask server on http://localhost:5001")
+    
+    # 環境変数から設定を取得（デフォルト値あり）
+    port = int(os.environ.get('FLASK_PORT', '5001'))
+    debug_mode = os.environ.get('FLASK_DEBUG', 'True').lower() in ('true', '1', 'yes')
+    host = os.environ.get('FLASK_HOST', '0.0.0.0')
+    
+    print(f"Starting Flask server on http://{host}:{port}")
+    print(f"Debug mode: {debug_mode}")
     print("API endpoints:")
     print("  - POST /api/search")
     print("  - POST /api/search-files")
@@ -1120,4 +1311,10 @@ if __name__ == '__main__':
     print("  - POST /api/open-excel-file")
     print("  - POST /api/search-replace")
     print("  - GET /api/health")
-    app.run(debug=True, port=5001, host='0.0.0.0')
+    print("\n環境変数で設定を変更できます:")
+    print("  - FLASK_PORT: ポート番号（デフォルト: 5001）")
+    print("  - FLASK_DEBUG: デバッグモード（デフォルト: True）")
+    print("  - FLASK_HOST: ホスト（デフォルト: 0.0.0.0）")
+    print("  - DEFAULT_SEARCH_FOLDER: デフォルト検索フォルダ（オプション）")
+    
+    app.run(debug=debug_mode, port=port, host=host)

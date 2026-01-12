@@ -98,46 +98,77 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, onCellClick, onOpe
           </tr>
         </thead>
         <tbody>
-          {currentResults.map((result, index) => (
-            <tr key={startIndex + index} className="result-row">
-              <td>{result.file.split(/[/\\]/).pop()}</td>
-              <td>{result.sheet}</td>
-              <td className="text-center">{result.row}</td>
-              <td className="text-center">{result.col}</td>
-              <td className="cell-value">{result.value}</td>
-              <td>
-                <span
-                  className="keyword-badge clickable-keyword"
-                  style={{ backgroundColor: getKeywordColor(result.keyword) }}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onOpenExcel(result)
-                  }}
-                  title="クリックしてExcelファイルを開く"
-                >
-                  {result.keyword}
-                </span>
-              </td>
-              <td>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button
-                    onClick={() => onOpenExcel(result)}
-                    className="open-excel-btn"
-                    title="Excelファイルを開く"
+          {currentResults.map((result, index) => {
+            const fileName = result.file.split(/[/\\]/).pop() || result.file
+            // ファイルパスをfile://形式に変換（Windows対応）
+            const filePath = result.file.replace(/\\/g, '/')
+            const fileUrl = filePath.startsWith('file://') ? filePath : 
+                          (filePath.match(/^[A-Za-z]:/) ? `file:///${filePath}` : `file://${filePath}`)
+            
+            return (
+              <tr key={startIndex + index} className="result-row">
+                <td>
+                  <a
+                    href={fileUrl}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      // ファイルを開く処理
+                      onOpenExcel(result)
+                    }}
+                    style={{
+                      color: '#0563C1',
+                      textDecoration: 'underline',
+                      cursor: 'pointer'
+                    }}
+                    title={`クリックしてファイルを開く: ${result.file}`}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.textDecoration = 'underline'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.textDecoration = 'underline'
+                    }}
                   >
-                    📂 開く
-                  </button>
-                  <button
-                    onClick={() => onCellClick(result)}
-                    className="view-details-btn"
-                    title="セル詳細を表示"
+                    {fileName}
+                  </a>
+                </td>
+                <td>{result.sheet}</td>
+                <td className="text-center">{result.row}</td>
+                <td className="text-center">{result.col}</td>
+                <td className="cell-value">{result.value}</td>
+                <td>
+                  <span
+                    className="keyword-badge clickable-keyword"
+                    style={{ backgroundColor: getKeywordColor(result.keyword) }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onOpenExcel(result)
+                    }}
+                    title="クリックしてExcelファイルを開く"
                   >
-                    📋 詳細
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
+                    {result.keyword}
+                  </span>
+                </td>
+                <td>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      onClick={() => onOpenExcel(result)}
+                      className="open-excel-btn"
+                      title="Excelファイルを開く"
+                    >
+                      📂 開く
+                    </button>
+                    <button
+                      onClick={() => onCellClick(result)}
+                      className="view-details-btn"
+                      title="セル詳細を表示"
+                    >
+                      📋 詳細
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
 

@@ -5,14 +5,13 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
 
 # Build outputs
 dist/
 build/
-*.egg-info/
+*.log
 
-# Environment variables
+# Environment
 .env
 .env.local
 
@@ -21,17 +20,16 @@ build/
 .idea/
 *.swp
 *.swo
-*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Uploads and results
-uploads/
+# Project specific
 results/
-*.xlsx
-*.xls
+uploads/
+server_error.log
+server.log
 
-# Logs
-*.log
+.vercel
+.env*.local
