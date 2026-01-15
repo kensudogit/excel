@@ -27,12 +27,17 @@ os.environ['UPLOAD_FOLDER'] = str(UPLOAD_DIR)
 os.environ['RESULTS_FOLDER'] = str(RESULTS_DIR)
 
 # Flaskアプリをインポート（エラーハンドリング付き）
+# VercelのPython runtimeがFlaskアプリを正しく認識できるようにする
 try:
-    from app import app
+    # モジュールレベルでのインポートを避け、関数内でインポートする
+    # これにより、Vercelのruntimeが正しくFlaskアプリを認識できる
+    from app import app as flask_app
 except Exception as e:
     import traceback
     error_trace = traceback.format_exc()
-    print(f"Error importing Flask app: {error_trace}")
+    # Vercel環境ではprint文が問題を引き起こす可能性があるため、エラーを記録
+    import logging
+    logging.error(f"Error importing Flask app: {error_trace}")
     raise
 
 def handler(request):
@@ -96,7 +101,8 @@ def handler(request):
         
         # Flaskのテストクライアントを使用
         # multipart/form-dataの場合は、リクエストオブジェクトをそのまま使用
-        with app.test_request_context(
+        # flask_appを使用（インポート時に名前を変更）
+        with flask_app.test_request_context(
             path=path,
             method=method,
             query_string=query_string_str,
@@ -104,7 +110,7 @@ def handler(request):
             data=request_data,
             content_type=request_content_type if request_content_type else None
         ):
-            response = app.full_dispatch_response()
+            response = flask_app.full_dispatch_response()
             
             # レスポンスヘッダーを構築
             response_headers = {}

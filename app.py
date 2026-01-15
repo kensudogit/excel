@@ -50,8 +50,8 @@ except ImportError:
         HYPERLINK_AVAILABLE = True
     except ImportError:
         HYPERLINK_AVAILABLE = False
-        # app.loggerはまだ定義されていないため、printを使用
-        print("Warning: Hyperlink class not available, will use string hyperlinks")
+        # Vercel環境ではprint文が問題を引き起こす可能性があるため、ログ出力は後で行う
+        # 警告は後でapp.loggerを使用して出力する
 
 # Windows環境でExcelを操作するためのライブラリ（オプション）
 # win32comを使用すると、Excelアプリケーションを直接操作できる
@@ -72,6 +72,11 @@ app = Flask(__name__)
 # CORS（Cross-Origin Resource Sharing）を有効化
 # これにより、異なるドメインからのリクエストを許可する（完全公開モード）
 CORS(app)
+
+# Hyperlinkが利用できない場合の警告をログに出力
+if not HYPERLINK_AVAILABLE:
+    import logging
+    logging.warning("Hyperlink class not available, will use string hyperlinks")
 
 # ファイルアップロードサイズ制限を設定
 # デフォルトは16MBだが、大きなExcelファイルに対応するため100MBに拡大
