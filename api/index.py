@@ -26,16 +26,13 @@ RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 os.environ['UPLOAD_FOLDER'] = str(UPLOAD_DIR)
 os.environ['RESULTS_FOLDER'] = str(RESULTS_DIR)
 
-# Flaskアプリをインポート（エラーハンドリング付き）
+# Flaskアプリをインポート
 # VercelのPython runtimeがFlaskアプリを正しく認識できるようにする
 try:
-    # モジュールレベルでのインポートを避け、関数内でインポートする
-    # これにより、Vercelのruntimeが正しくFlaskアプリを認識できる
-    from app import app as flask_app
+    from app import app
 except Exception as e:
     import traceback
     error_trace = traceback.format_exc()
-    # Vercel環境ではprint文が問題を引き起こす可能性があるため、エラーを記録
     import logging
     logging.error(f"Error importing Flask app: {error_trace}")
     raise
@@ -100,9 +97,7 @@ def handler(request):
         request_content_type = content_type
         
         # Flaskのテストクライアントを使用
-        # multipart/form-dataの場合は、リクエストオブジェクトをそのまま使用
-        # flask_appを使用（インポート時に名前を変更）
-        with flask_app.test_request_context(
+        with app.test_request_context(
             path=path,
             method=method,
             query_string=query_string_str,
@@ -110,7 +105,7 @@ def handler(request):
             data=request_data,
             content_type=request_content_type if request_content_type else None
         ):
-            response = flask_app.full_dispatch_response()
+            response = app.full_dispatch_response()
             
             # レスポンスヘッダーを構築
             response_headers = {}
@@ -153,8 +148,9 @@ def handler(request):
         import traceback
         error_trace = traceback.format_exc()
         # エラーをログに出力（Vercelのログで確認可能）
-        print(f"Error in handler: {error_trace}")
-        print(f"Request: {request}")
+        import logging
+        logging.error(f"Error in handler: {error_trace}")
+        logging.error(f"Request: {request}")
         return {
             'statusCode': 500,
             'headers': {
