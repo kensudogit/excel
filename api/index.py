@@ -89,14 +89,20 @@ def handler(request):
         # Content-Typeヘッダーを確認
         content_type = headers.get('content-type', '').lower() if isinstance(headers, dict) else ''
         
+        # multipart/form-dataの場合は、リクエストオブジェクトから直接取得
+        # VercelのServerless Functionsでは、multipart/form-dataは特殊な形式で渡される
+        request_data = body_bytes
+        request_content_type = content_type
+        
         # Flaskのテストクライアントを使用
+        # multipart/form-dataの場合は、リクエストオブジェクトをそのまま使用
         with app.test_request_context(
             path=path,
             method=method,
             query_string=query_string_str,
             headers=headers,
-            data=body_bytes,
-            content_type=content_type if content_type else None
+            data=request_data,
+            content_type=request_content_type if request_content_type else None
         ):
             response = app.full_dispatch_response()
             
